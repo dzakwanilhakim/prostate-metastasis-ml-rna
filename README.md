@@ -1,4 +1,4 @@
-# Prostate Cancer Metastasis Prediction
+# Prostate Cancer Metastasis Prediction with Gene Expression Profile
 
 **Genomics and Science Dojo 2.0 — Team 6**
 Dzakwanil Hakim · Elizabeth Loho
