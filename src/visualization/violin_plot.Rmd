@@ -1,0 +1,59 @@
+---
+title: "Violin_Plot"
+output: html_document
+date: "2025-06-16"
+---
+
+```{r}
+cols = c("MYH11", "PRMT1", "TENT4A", "ZNF585B", "STRN4", "FTX", "ZXDA")
+
+```
+
+
+
+```{r}
+rna_matrix <- `596_RNAmatrix`
+sample sheet
+cols = c("MYH11", "PRMT1", "TENT4A", "ZNF585B", "STRN4", "FTX", "ZXDA")
+make half violin plot for each Cols ins same plot, left half violin is "Non-metastatis" and half right "metastasis" based on samplesheet$class
+```
+
+
+```{r}
+
+# Install required packages if needed
+# install.packages("ggplot2")
+# install.packages("reshape2")
+# install.packages("gghalves")
+
+library(ggplot2)
+library(reshape2)
+library(gghalves)
+
+# Your selected genes
+cols <- c("MYH11", "PRMT1", "TENT4A", "ZNF585B", "STRN4", "FTX", "ZXDA")
+
+# Combine rna_matrix and class from samplesheet
+rna_matrix$class <- samplesheet$class
+
+# Melt the matrix for ggplot
+df_long <- melt(rna_matrix, id.vars = "class", measure.vars = cols,
+                variable.name = "Gene", value.name = "Expression")
+
+# Plot
+ggplot(df_long, aes(x = Gene, y = Expression, fill = class)) +
+  gghalves::geom_half_violin(data = subset(df_long, class == "Non-metastasis"),
+                             aes(x = Gene, y = Expression, fill = class),
+                             side = "l", alpha = 0.7, trim = FALSE) +
+  gghalves::geom_half_violin(data = subset(df_long, class == "Metastasis"),
+                             aes(x = Gene, y = Expression, fill = class),
+                             side = "r", alpha = 0.7, trim = FALSE) +
+  theme_minimal() +
+  scale_fill_manual(values = c("Non-metastasis" = "#1f77b4", "Metastasis" = "#d62728")) +
+  labs(title = "Half Violin Plot of Gene Expression by Class",
+       x = "Gene", y = "Expression Level") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+

@@ -1,0 +1,512 @@
+---
+title: "post-processing"
+output: html_document
+date: "2025-02-24"
+---
+
+```{r}
+library(DESeq2)
+library(sva)
+
+```
+
+```{r}
+rna_matrix_genes_2 <- rna_matrix_genes[, samplesheet_filtered1$sample_id]
+identical(colnames(rna_matrix_genes_2), samplesheet_filtered1$sample_id)
+dim(rna_matrix_genes_2)
+dim(samplesheet_filtered1)
+```
+
+
+```{r}
+# 1️⃣ PCA (Check for Batch Effect)
+dds <- DESeqDataSetFromMatrix(countData = round(rna_matrix_genes), colData = , design = ~ condition)
+vsd <- vst(dds, blind = TRUE)
+rna_matrix_vst <- assay(vsd)
+pca_res <- prcomp(t(scale(rna_matrix_vst)))  # PCA
+
+```
+
+
+```{r}
+rna_matrix <- as.matrix(rna_matrix_genes)  # Ensure it's a matrix
+
+```
+
+```{r}
+rna_matrix_genes <- rna_matrix_genes[, !grepl("\\.", colnames(rna_matrix_genes))]
+rna_matrix_genes
+
+```
+
+
+
+```{r}
+samplesheet_filtered1 <- samplesheet_filtered1[-c(457, 409, 264, 527), ]
+samplesheet_filtered1
+```
+
+
+```{r}
+
+rna_matrix_genes_2 <- rna_matrix_genes[, match(samplesheet_filtered1$sample_id, colnames(rna_matrix_genes))]
+
+identical(colnames(rna_matrix_genes_2), samplesheet_filtered1$sample_id)  # Should return TRUE
+
+```
+
+```{r}
+library(dplyr)
+samplesheet2 <- samplesheet
+samplesheet2 <- samplesheet2 %>% select(class, Project.ID)
+samplesheet2
+
+```
+
+```{r}
+identical(rownames(samplesheet2), colnames(rna_matrix_genes_2))
+```
+
+```{r}
+
+library(dplyr)
+library(DESeq2)
+
+# Ensure metadata contains only relevant columns
+samplesheet2 <- samplesheet %>% select(class, Project.ID)
+
+# Convert character columns to factors
+samplesheet2 <- samplesheet2 %>%
+  mutate(across(everything(), as.factor))
+
+# Set row names to match column names in RNA matrix
+rownames(samplesheet2) <- rownames(samplesheet)
+
+# Ensure row names match column names in RNA matrix
+if (!identical(rownames(samplesheet2), colnames(rna_matrix_genes_2))) {
+  stop("Mismatch between samplesheet2 row names and rna_matrix_genes_2 column names!")
+}
+
+# Convert RNA matrix to numeric matrix
+rna_matrix_genes_3 <- as.matrix(rna_matrix_genes_2)
+
+# Create DESeq2 dataset
+dds_default <- DESeqDataSetFromMatrix(
+  countData = round(rna_matrix_genes_3),  # Round for integer counts
+  colData = samplesheet2,                 # Ensure row names match colnames
+  design = ~ class + Project.ID            # Adjust based on experimental design
+)
+
+dds_default
+
+
+```
+
+```{r}
+res_def <- 
+```
+
+```{r}
+#dds_default_2 <- DESeq(dds_default)  # DESeq2's internal normalization
+library(DESeq2)
+# Get normalized counts
+rna_matrix_normalized_final <- counts(dds_default_2, normalized = TRUE)
+
+#dds_default_2
+rna_matrix_normalized_final
+
+```
+
+```{r}
+
+
+resultsNames(dds_default_2) # lists the coefficients
+#res <- results(dds, name="condition_trt_vs_untrt")
+```
+
+```{r}
+levels(dds_default_2$class)
+```
+
+```{r}
+res_nonMT_vs_N <- results(dds_default_2, contrast = c("class", "nonMT", "N"))
+res_MT_vs_N <- results(dds_default_2, contrast = c("class", "MT", "N"))
+res_MT_vs_nonMT <- results(dds_default_2, contrast = c("class", "MT", "nonMT"))
+
+
+```
+
+
+```{r}
+library(plotly)
+
+volcano_plotly <- function(res, title = "Volcano Plot") {
+  # Convert results to data frame
+  res_df <- as.data.frame(res)
+  res_df$gene <- rownames(res_df)  # Add gene names
+  
+  # Compute -log10(adjusted p-value)
+  res_df$log10_padj <- -log10(res_df$padj)
+  
+  # Assign colors based on significance criteria
+  res_df$Significance <- "Not Significant"
+  res_df$Significance[res_df$log2FoldChange > 0 & res_df$log10_padj > 1] <- "Upregulated"
+  res_df$Significance[res_df$log2FoldChange < 0 & res_df$log10_padj > 1] <- "Downregulated"
+  
+  # Count the number of upregulated and downregulated genes
+  up_count <- sum(res_df$Significance == "Upregulated", na.rm = TRUE)
+  down_count <- sum(res_df$Significance == "Downregulated", na.rm = TRUE)
+  
+  # Define significance labels with counts
+  significance_labels <- c("Not Significant", 
+                           paste0("Upregulated (n=", up_count, ")"), 
+                           paste0("Downregulated (n=", down_count, ")"))
+  
+  # Define correct color mapping
+  color_mapping <- setNames(c("gray", "red", "blue"), significance_labels)
+  
+  # Update significance labels in data frame
+  res_df$Significance <- factor(res_df$Significance, 
+                                levels = c("Not Significant", "Upregulated", "Downregulated"),
+                                labels = significance_labels)
+  
+  # Select the top 10 genes with the highest -log10(padj) for labeling
+  top_genes <- res_df[order(-res_df$log10_padj), ][1:10, ]
+  
+  # Create plot
+  p <- plot_ly(res_df, 
+               x = ~log2FoldChange, 
+               y = ~log10_padj, 
+               text = ~paste("Gene:", gene, "<br>Log2FC:", round(log2FoldChange, 3), "<br>p-adj:", signif(padj, 3)),
+               mode = "markers",
+               marker = list(size = 6),
+               color = ~Significance,
+               colors = color_mapping) %>%
+    layout(title = title,
+           xaxis = list(title = "Log2 Fold Change"),
+           yaxis = list(title = "-log10 Adjusted P-value"),
+           hovermode = "closest")
+  
+  # Add gene labels for the top 10 significant genes (without triangle)
+  p <- p %>%
+    add_annotations(
+      x = top_genes$log2FoldChange,
+      y = top_genes$log10_padj + 0.1,  # Slight offset to move labels above the dots
+      text = top_genes$gene,
+      showarrow = FALSE,
+      font = list(size = 12)  # Adjust font size if needed
+    )
+  return(p)
+}
+
+
+
+```
+
+
+```{r}
+library(plotly)
+
+volcano_plotly <- function(res, title = "Volcano Plot") {
+  # Convert results to data frame
+  res_df <- as.data.frame(res)
+  res_df$gene <- rownames(res_df)  # Add gene names
+  
+  # Compute -log10(adjusted p-value)
+  res_df$log10_padj <- -log10(res_df$padj)
+  
+  # Assign colors based on significance criteria
+  res_df$Significance <- "Not Significant"
+  res_df$Significance[res_df$log2FoldChange > 0 & res_df$log10_padj > 1] <- "Upregulated"
+  res_df$Significance[res_df$log2FoldChange < 0 & res_df$log10_padj > 1] <- "Downregulated"
+  
+  # Count the number of upregulated and downregulated genes
+  up_count <- sum(res_df$Significance == "Upregulated", na.rm = TRUE)
+  down_count <- sum(res_df$Significance == "Downregulated", na.rm = TRUE)
+  
+  # Define significance labels with counts
+  significance_labels <- c("Not Significant", 
+                           paste0("Upregulated (n=", up_count, ")"), 
+                           paste0("Downregulated (n=", down_count, ")"))
+  
+  # Define correct color mapping
+  color_mapping <- setNames(c("gray", "red", "blue"), significance_labels)
+  
+  # Update significance labels in data frame
+  res_df$Significance <- factor(res_df$Significance, 
+                                levels = c("Not Significant", "Upregulated", "Downregulated"),
+                                labels = significance_labels)
+  
+  # Select the top 10 genes with the highest -log10(padj) for labeling
+  top_genes <- res_df[order(-res_df$log10_padj), ][1:10, ]
+  
+  # Create plot
+  p <- plot_ly(res_df, 
+               x = ~log2FoldChange, 
+               y = ~log10_padj, 
+               text = ~paste("Gene:", gene, "<br>Log2FC:", round(log2FoldChange, 3), "<br>p-adj:", signif(padj, 3)),
+               mode = "markers",
+               marker = list(size = 6),
+               color = ~Significance,
+               colors = color_mapping) %>%
+    layout(title = title,
+           xaxis = list(title = "Log2 Fold Change"),
+           yaxis = list(title = "-log10 Adjusted P-value"),
+           hovermode = "closest",
+           shapes = list(
+             list(
+               type = "line",
+               x0 = min(res_df$log2FoldChange, na.rm = TRUE),
+               x1 = max(res_df$log2FoldChange, na.rm = TRUE),
+               y0 = 2,
+               y1 = 2,
+               line = list(color = "black", width = 2, dash = "dash")  # Dashed black line
+             )
+           )
+    )
+
+  # Add gene labels for the top 10 significant genes (without triangle)
+  p <- p %>%
+    add_annotations(
+      x = top_genes$log2FoldChange,
+      y = top_genes$log10_padj + 0.1,  # Slight offset to move labels above the dots
+      text = top_genes$gene,
+      showarrow = FALSE,
+      font = list(size = 12)  # Adjust font size if needed
+    )
+  return(p)
+}
+
+```
+
+
+```{r}
+volcano_plotly(res_MT_vs_N, title = "Volcano Plot for nonMT vs N")
+
+```
+
+
+```{r}
+vp_MT_nonMT <- volcano_plotly(res_MT_vs_nonMT, top = 20,title = "Volcano Plot for MT vs nonMT")
+vp_MT_nonMT
+```
+
+```{r}
+
+library(plotly)
+
+volcano_plotly <- function(res, top=15, title = "Volcano Plot") {
+  # Convert results to data frame
+  res_df <- as.data.frame(res)
+  res_df$gene <- rownames(res_df)  # Add gene names
+  
+  # Compute -log10(adjusted p-value)
+  res_df$log10_padj <- -log10(res_df$padj)
+  
+  # Assign colors based on significance criteria
+  res_df$Significance <- "Not Significant"
+  res_df$Significance[res_df$log2FoldChange > 0 & res_df$log10_padj > 2] <- "Upregulated"
+  res_df$Significance[res_df$log2FoldChange < 0 & res_df$log10_padj > 2] <- "Downregulated"
+  
+  # Count the number of upregulated and downregulated genes
+  up_count <- sum(res_df$Significance == "Upregulated", na.rm = TRUE)
+  down_count <- sum(res_df$Significance == "Downregulated", na.rm = TRUE)
+  
+  # Define significance labels with counts
+  significance_labels <- c("Not Significant", 
+                           paste0("Upregulated (n=", up_count, ")"), 
+                           paste0("Downregulated (n=", down_count, ")"))
+  
+  # Define correct color mapping
+  color_mapping <- setNames(c("gray", "red", "blue"), significance_labels)
+  
+  # Update significance labels in data frame
+  res_df$Significance <- factor(res_df$Significance, 
+                                levels = c("Not Significant", "Upregulated", "Downregulated"),
+                                labels = significance_labels)
+  
+  # Select the top 10 genes with the highest -log10(padj) for labeling
+  top_genes <- res_df[order(-res_df$log10_padj), ][1:top, ]
+  
+  # Create plot
+  p <- plot_ly(res_df, 
+               x = ~log2FoldChange, 
+               y = ~log10_padj, 
+               text = ~paste("Gene:", gene, "<br>Log2FC:", round(log2FoldChange, 3), "<br>p-adj:", signif(padj, 3)),
+               mode = "markers",
+               marker = list(size = 6, line = list(width = 1, color = "black")),  # Added outline
+               color = ~Significance,
+               colors = color_mapping) %>%
+    layout(title = title,
+           xaxis = list(title = "Log2 Fold Change"),
+           yaxis = list(title = "-log10 Adjusted P-value"),
+           hovermode = "closest",
+           shapes = list(
+             list(
+               type = "line",
+               x0 = min(res_df$log2FoldChange, na.rm = TRUE),
+               x1 = max(res_df$log2FoldChange, na.rm = TRUE),
+               y0 = 2, 
+               y1 = 2, 
+               line = list(color = "black", dash = "dash", width = 1)
+             )
+           )
+    )
+  
+  # Add gene labels for the top 10 significant genes (positioned above the points)
+  p <- p %>%
+    add_annotations(
+      x = top_genes$log2FoldChange,
+      y = top_genes$log10_padj + max(res_df$log10_padj) * 0.03,  # Offset dynamically based on y-axis range
+      text = top_genes$gene,
+      showarrow = FALSE,
+      font = list(size = 12, color = "black"),
+      align = "center"
+    )
+
+  return(p)
+}
+
+
+```
+
+
+
+
+
+```{r}
+#filter
+library(dplyr)
+
+# Convert DESeqResults to a data frame
+res_MT_nonMT_df <- as.data.frame(res_MT_vs_nonMT)
+
+# Filter significant results
+res_MT_nonMT_sig <- res_MN_nonMT_df %>% filter(padj < 0.01)
+res_MT_nonMT_sig
+
+
+```
+
+
+```{r}
+# Convert DESeqResults objects to data frames
+res_MT_vs_N_df <- as.data.frame(res_MT_vs_N)
+res_nonMT_vs_N_df <- as.data.frame(res_nonMT_vs_N)
+
+# Filter rows based on rownames present in res_MN_nonMT_df
+filtered_res_MT_vs_N <- res_MT_vs_N_df[rownames(res_MT_vs_N_df) %in% rownames(res_MT_nonMT_sig), ]
+filtered_res_nonMT_vs_N <- res_nonMT_vs_N_df[rownames(res_nonMT_vs_N_df) %in% rownames(res_MT_nonMT_sig), ]
+
+filtered_res_nonMT_vs_N
+filtered_res_MT_vs_N
+
+```
+
+```{r}
+vp_MT_N <- volcano_plotly(filtered_res_MT_vs_N, title = "Volcano Plot MT vs N")
+vp_MT_N
+```
+
+```{r}
+vp_MT_N <- volcano_plotly(filtered_res_nonMT_vs_N, title = "Volcano Plot nonMT vs N")
+vp_MT_N
+
+```
+
+
+```{r}
+genes_to_remove <- c("ALDH1A3", "DDAH2", "MLPH", "ZNF383", "ERI1", "C19orf47", "XPO7")
+
+# Remove rows if rownames are in genes_to_remove
+res_MT_nonMT_sig2 <- res_MT_nonMT_sig[!rownames(res_MT_nonMT_sig) %in% genes_to_remove, ]
+res_MT_nonMT_sig2
+
+
+```
+
+```{r}
+dds_rna_matrix_normalized_final <- rna_matrix_normalized_final[rownames(rna_matrix_normalized_final) %in% rownames(res_MT_nonMT_sig2), ]
+dds_rna_matrix_normalized_final
+
+
+```
+
+
+
+```{r}
+rna_matrix_normalized_final <- rna_matrix_normalized_final[rownames(rna_matrix_normalized_final) %in% rownames(res_MT_nonMT_sig2), ]
+# Remove rows if row names are in genes_to_remove
+# rna_matrix_normalized_final 
+
+rna_matrix_normalized_final <- as.data.frame(rna_matrix_normalized_final)
+rna_matrix_normalized_final
+
+```
+
+```{r}
+library(DESeq2)
+vsd <- vst(dds_default_2, blind = TRUE)
+
+vsd_filtered <- vsd[rownames(vsd) %in% rownames(res_MT_nonMT_sig2), ]
+
+vst_matrix <- assay(vsd_filtered)
+vst_matrix
+
+```
+
+
+
+```{r}
+library(dplyr)
+
+samplesheet2_2 <- samplesheet2 %>% filter(class != "N")
+samplesheet2_2
+
+
+```
+
+
+```{r}
+vst_df <- as.data.frame(vst_matrix)
+
+vst_df_MT <- vst_df[,colnames(vst_df) %in% rownames(samplesheet2_2)]
+
+vst_df_MT
+
+```
+
+
+```{r}
+svd_result <- svd(scale(vst_df_MT))  # Perform SVD
+svd_df <- as.data.frame(svd_result$v)  # Get right singular vectors
+svd_df
+
+(svd_df$project <- samplesheet2_2$Project.ID)
+
+#svd_df$project <- samplesheet2_2$project  
+#svd_df$pro
+# Test correlation of batch labels with singular vectors
+#pvals <- apply(svd_result$v[, 1:5], 2, function(pc) summary(aov(pc ~ svd_df$project))[[1]]$`Pr(>F)`[1])
+#print(pvals)
+
+
+```
+
+
+
+```{r}
+(pcs <- svd_result$v[, 1:5])   # Extract first 5 PCs)
+(pvals <- apply(pcs, 2, function(pc) t.test(pc ~ svd_df$project)$p.value))  # Perform t-test
+print(pvals)  # Print p-values
+
+
+```
+
+
+
+
+
+
+
+

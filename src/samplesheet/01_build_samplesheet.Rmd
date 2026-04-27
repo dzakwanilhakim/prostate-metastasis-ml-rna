@@ -1,0 +1,200 @@
+---
+title: "1_SAMPLESHEET"
+output: html_document
+date: "2025-06-05"
+---
+
+```{r}
+source("utils.R")
+```
+
+
+```{r}
+library(jsonlite)
+library(dplyr)
+```
+
+
+# 1. READ SAMPLESHEET
+
+```{r}
+samplesheet_parent <- read.delim("samplesheet_hnsc.tsv")
+samplesheet_parent
+```
+
+
+
+```{r}
+samplesheet <- remove_after_comma(samplesheet_parent)
+samplesheet
+```
+
+## ADD SLIDE AND NOID
+
+```{r}
+samplesheet$Slide <- samplesheet$File.Name
+samplesheet$Array <- "noid"
+samplesheet <- samplesheet %>% select(Slide, Array, everything())
+samplesheet
+```
+
+## SPLIT
+
+
+```{r}
+samplesheet <- split_column(samplesheet,"Slide", 1)
+samplesheet
+```
+
+
+## UNIQUE SLIDE
+
+```{r}
+dim(samplesheet)
+samplesheet <- samplesheet %>% distinct(Slide, .keep_all = TRUE)
+dim(samplesheet)
+```
+
+## CHECK FOR DUPLICATED IN Case.ID
+
+```{r}
+any(duplicated(samplesheet$Case.ID))
+```
+
+```{r}
+samplesheet$Sample_Name <- samplesheet$Case.ID
+```
+
+# GIVE NUMBERING FOR DUPLICATED SAMPLE_NAME
+
+
+```{r}
+samplesheet <- numbering_duplicate(samplesheet, "Sample_Name")
+samplesheet
+```
+
+
+```{r}
+samplesheet <- samplesheet %>% select(Sample_Name, everything())
+samplesheet
+```
+
+
+# 2. READ METADATA JSON
+
+```{r}
+
+library(jsonlite)
+
+```
+
+```{r}
+metadata <- read_json("metadata_hnsc.json")
+```
+
+
+```{r}
+cols_entities <- c("entity_submitter_id",
+             "entity_id",
+             "case_id")
+metadata <- add_annotation_fields(metadata, metadata$associated_entities, cols_entities)
+```
+
+```{r}
+cols_annotations <- c("case_submitter_id",
+                     "notes",
+                     "category")
+metadata <- add_annotation_fields(metadata, metadata$annotations, cols_annotations)
+```
+
+
+```{r}
+metadata$filename <- metadata$file_name
+metadata <- split_column(metadata, "filename",1)
+metadata <- metadata %>% distinct(filename, .keep_all = TRUE)
+metadata
+```
+
+
+# 3. CBIND PLATFORM COLUMN TO SAMPLESHEET
+
+```{r}
+samplesheet$Key.Sample <- samplesheet$Slide
+metadata$Key.Sample <- metadata$filename
+```
+
+```{r}
+samplesheet_cp1 <- cbind_function(samplesheet, metadata, key = "Key.Sample", target = "platform")
+```
+
+
+# 4. INSPECT SAMPLESHEET
+```{r}
+
+value_count(samplesheet_cp1, cols = c('platform',
+                                      'Preservation.Method', 
+                                      'Specimen.Type', 
+                                      'Tumor.Descriptor', 
+                                      'Tissue.Type',
+                                      'Project.ID'))
+```
+
+# 5. PREPARATION SAMPLESHEET FOR CHAMP
+
+```{r}
+library(dplyr)
+samplesheet_cp1 <- samplesheet_cp1 %>% rename(Sentrix_ID = Slide,
+                                              Sentrix_Position = Array,
+                                              Sample_Group = Tissue.Type,
+                                              Project = Project.ID)
+samplesheet_cp1$Sample_Plate <- NA
+samplesheet_cp1$Sample_Well <- NA
+samplesheet_cp1$Pool_ID <- NA
+```
+
+
+```{r}
+col_sample <- colnames(sample)
+all(col_sample %in% colnames(samplesheet_cp1))
+```
+
+```{r}
+samplesheet_all <- samplesheet_cp1 %>% select(all_of(col_sample), everything())
+samplesheet_all
+```
+
+
+# EXPORT SAMPLESHEET FOR EACH PLATFORM
+```{r}
+value_count(samplesheet_cp1, "platform")
+```
+
+```{r}
+#samplesheet_27 <- subset(samplesheet_all, platform == "Illumina Human Methylation 27")
+samplesheet_450 <- subset(samplesheet_all, platform == "Illumina Human Methylation 450")
+samplesheet_EPIC <- subset(samplesheet_all, platform == "Illumina Methylation Epic")
+#samplesheet_EPICV2 <- subset(samplesheet_all, platform == "Illumina Methylation Epic v2")
+```
+
+
+```{r}
+write.csv(samplesheet_450, "samplesheet_450.csv", quote = FALSE)
+write.csv(samplesheet_EPIC, "samplesheet_EPIC.csv", quote = FALSE)
+write.csv(samplesheet_all, "samplesheet_all.csv", quote = FALSE)
+```
+
+
+
+```{r}
+save(samplesheet_all,
+     #samplesheet_27,
+     samplesheet_450,
+     samplesheet_EPIC,
+     #samplesheet_EPICV2,
+     samplesheet_all,
+     metadata,
+     file = "samplesheet_hnsc.rda")
+```
+
+
+

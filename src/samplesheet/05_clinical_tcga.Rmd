@@ -1,0 +1,63 @@
+---
+title: "clinical"
+output: html_document
+date: "2025-06-08"
+---
+
+```{r}
+source("utils_basic_function.r")
+source("utils.R")
+```
+
+```{r}
+load("QCPassed_FinalSet.rda")
+```
+
+```{r}
+rownames(QCPassed_PD) <- NULL
+```
+
+```{r}
+pd <- QCPassed_PD
+```
+
+
+# Filter metadata to 662
+```{r}
+metadata_filtered <- metadata[metadata$Key.Sample %in% pd$Key.Sample,]
+head(metadata_filtered)
+```
+
+
+# 1. READ TSV
+```{r}
+clinical_tcga <- read.delim("clinical_tcga.tsv")
+clinical_cptac <- read.delim("clinical_cptac.tsv")
+```
+
+# 2. Set to NA
+```{r}
+clinical_tcga <- set2na(clinical_tcga)
+clinical_cptac <- set2na(clinical_cptac)
+```
+
+# 3. differences between 2 clinical
+
+```{r}
+col_tcga <- colnames(clinical_tcga)
+col_cptac <- colnames(clinical_cptac)
+```
+
+
+```{r}
+intersect(col_tcga, col_cptac)
+```
+
+```{r}
+setdiff(col_tcga, col_cptac)
+```
+
+```{r}
+setdiff(col_cptac, col_tcga)
+```
+

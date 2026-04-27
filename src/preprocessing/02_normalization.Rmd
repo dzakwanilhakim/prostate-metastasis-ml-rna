@@ -1,0 +1,173 @@
+---
+title: "preprocessing"
+output: html_document
+date: "2025-02-24"
+---
+
+```{r}
+rnaseq[rnaseq <= 10] <- NA
+
+```
+
+```{r}
+# Load required library
+library(ggplot2)
+
+# Count NA percentage for each column (patient)
+na_percentage <- colMeans(is.na(rnaseq)) * 100
+
+# Convert to a data frame for plotting
+na_df <- data.frame(NA_Percentage = na_percentage)
+
+# Plot density plot for smooth distribution
+ggplot(na_df, aes(x = NA_Percentage)) +
+  geom_density(fill = "blue", alpha = 0.5) +  # Density plot with smoothing
+  labs(title = "Density Plot of NA Percentage per Patient",
+       x = "NA Percentage",
+       y = "Density") +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+# Count NA percentage for each column (patient)
+na_percentage <- colMeans(is.na(rnaseq)) * 100
+
+# Get column names where NA percentage is greater than 75%
+high_na_cols <- names(na_percentage[na_percentage > 80])
+
+# Print the column names
+print(high_na_cols)
+```
+
+```{r}
+# Remove rows from samplesheet where sample_id is in high_na_cols
+samplesheet_filtered1 <- samplesheet[!(samplesheet$sample_id %in% high_na_cols), ]
+
+# Print the updated samplesheet
+print(samplesheet_filtered1)
+table(samplesheet_filtered1$class)
+
+
+```
+
+
+```{r}
+rnaseq_filtered1 <- rnaseq[, colnames(rnaseq) %in% samplesheet_filtered1$sample_id]
+rnaseq_filtered1
+rownames(rnaseq_filtered1) <- rnaseq$gene_id
+rnaseq_filtered1
+
+```
+```{r}
+rnaseq
+```
+
+
+```{r}
+rna_matrix_filtered2 <- rnaseq_filtered1[rowMeans(is.na(rnaseq_filtered1)) <= 0.01, ]
+rna_matrix_filtered2
+```
+
+```{r}
+any(is.na(rna_matrix_filtered2))
+```
+
+
+
+```{r}
+# Load required package
+library(impute)
+
+# Perform KNN imputation with k = 5
+rna_matrix_imputed <- impute.knn(as.matrix(rna_matrix_filtered2), k = 5)$data
+rna_matrix_imputed <- as.data.frame(rna_matrix_imputed)
+rna_matrix_imputed
+
+```
+
+
+
+```{r}
+any(is.na(rna_matrix_imputed))
+
+```
+
+```{r}
+any(duplicated(rownames(rna_matrix_imputed)))
+```
+
+
+```{r}
+rna_matrix_imputed_copy <- rna_matrix_imputed
+```
+
+```{r}
+
+# Remove everything after the dot in rownames
+rownames(rna_matrix_imputed) <- sub("\\..*", "", rownames(rna_matrix_imputed))
+
+# Handle duplicate rownames by making them unique
+rownames(rna_matrix_imputed) <- make.unique(rownames(rna_matrix_imputed))
+
+rna_matrix_imputed
+
+
+```
+
+```{r}
+rna_matrix_imputed_copy2 <- rna_matrix_imputed
+```
+
+```{r}
+is(an)
+```
+
+```{r}
+
+library(biomaRt)
+
+# Connect to Ensembl database
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")  # Change dataset if needed
+
+# Get mapping of Ensembl IDs to Gene Names
+gene_mapping <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"), 
+                      filters = "ensembl_gene_id", 
+                      values = rownames(rna_matrix_imputed), 
+                      mart = mart)
+
+# Ensure all Ensembl IDs are mapped properly
+gene_mapping <- gene_mapping[gene_mapping$hgnc_symbol != "", ]  # Remove empty gene names
+
+# Create a named vector for mapping
+id_to_gene <- setNames(gene_mapping$hgnc_symbol, gene_mapping$ensembl_gene_id)
+
+# Copy the matrix before modifying rownames
+rna_matrix_genes <- rna_matrix_imputed
+
+# Replace Ensembl IDs with Gene Names, keeping original IDs if missing
+new_rownames <- ifelse(rownames(rna_matrix_genes) %in% names(id_to_gene),
+                        id_to_gene[rownames(rna_matrix_genes)],
+                        rownames(rna_matrix_genes))
+
+rownames(rna_matrix_genes) <- new_rownames
+
+# Ensure rownames are unique
+rownames(rna_matrix_genes) <- make.unique(rownames(rna_matrix_genes))
+
+rna_matrix_genes
+
+
+```
+
+
+
+
+```{r}
+norma
+```
+
+
+

@@ -1,0 +1,131 @@
+---
+title: "3.rna_methyl"
+output: html_document
+date: "2024-12-21"
+---
+checkpoint: manifest_filtered3
+
+#add gene column for all lower case
+```{r}
+library(dplyr)
+library(tidyr)
+```
+
+
+```{r}
+gene_data_rna_filtered$gene_name_lower <- tolower(gene_data_rna_filtered$external_gene_name)
+head(gene_data_rna_filtered)
+
+manifest_filtered2$gene_name_lower <- tolower(manifest_filtered2$UCSC_RefGene_Name)
+head(manifest_filtered2$gene_name_lower)
+```
+
+
+```{r}
+# Find intersecting genes between cpg and rna
+intersect_cpg_rna_gene <- intersect(manifest_filtered2$gene_name_lower, gene_data_rna_filtered$gene_name_lower)
+
+# Filter cpg data to keep only rows with intersecting genes
+manifest_filtered3 <- manifest_filtered2 %>% 
+  filter(gene_name_lower %in% intersect_cpg_rna_gene)
+
+# Filter rna data to keep only rows with intersecting genes
+gene_data_rna_filtered2 <- gene_data_rna_filtered %>% 
+  filter(gene_name_lower %in% intersect_cpg_rna_gene)
+```
+
+
+```{r}
+all(manifest_filtered3$gene_name_lower %in% gene_data_rna_filtered2$gene_name_lower)
+all(gene_data_rna_filtered2$gene_name_lower %in% manifest_filtered3$gene_name_lower)
+
+```
+
+```{r}
+any(duplicated(manifest_filtered3$cpg))
+any(duplicated(manifest_filtered3$cpg_gene))
+```
+
+```{r}
+
+
+library(dplyr)
+M_df_promoter_sample <- M_df_promoter %>%
+  filter(rownames(.) %in% rownames(sampsheet_rna_meth_ordered_filtered))
+           
+# Check dimensions of the filtered data
+
+print(dim(sampsheet_rna_meth_ordered_filtered))
+print(dim(M_df_promoter_sample))
+
+
+```
+
+
+```{r}
+
+
+# Filter columns in beta_combat_t_filtered_rna based on colnames
+M_df_promoter_sample_cpg <- M_df_promoter_sample[, colnames(M_df_promoter_sample) %in% manifest_filtered3$cpg]
+
+# Check dimensions of the filtered data
+
+print(dim(manifest_filtered3))
+print(dim(M_df_promoter_sample_cpg))
+
+
+all(colnames((M_df_promoter_sample_cpg) %in% manifest_filtered3$cpg))
+all(manifest_filtered3$cpg %in% colnames((M_df_promoter_sample_cpg)))
+
+```
+
+
+# filter RNA
+
+```{r}
+
+# Filter rows in beta_combat_t_filtered where row names are in sampsheet_rna_meth$Sample_Name
+rna_seq_filtered7 <- rna_imputed_data %>%
+  filter(rownames(.) %in% gene_data_rna_filtered2$ensembl_gene_id)
+
+# Check dimensions of the filtered data
+print(dim(rna_seq_filtered7))
+print(dim(rna_seq_filtered7))
+
+all(rownames(rna_seq_filtered7) %in% gene_data_rna_filtered2$ensembl_gene_id)
+all(gene_data_rna_filtered2$ensembl_gene_id %in% rownames(rna_seq_filtered7))
+
+```
+
+
+```{r}
+save(manifest_filtered3,
+     gene_data_rna_filtered2,
+     M_df_filtered_rna_cpg,
+     rna_seq_filtered7,
+     sampsheet_rna_meth_ordered_filtered,
+     file = "cpg_rna_intersecting.RData")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

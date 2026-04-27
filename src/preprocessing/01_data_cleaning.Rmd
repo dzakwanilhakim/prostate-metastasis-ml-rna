@@ -1,0 +1,115 @@
+---
+title: "1_preprocessing"
+output: html_document
+date: "2025-02-23"
+---
+
+```{r}
+# import metadata
+setwd("D:/Dojo_Prostate/PRAD_PROJECT")
+```
+
+```{r}
+getwd()
+```
+
+```{r}
+library(jsonlite)
+library(dplyr)
+
+# Load JSON file (Replace with your actual file path)
+json_file <- "metadata.repository.2025-02-22.json"
+
+# Read JSON file
+metadata_list <- fromJSON(json_file)
+
+# Convert to DataFrame
+metadata_df <- as.data.frame(metadata_list)
+
+# Print first rows
+#metadata_df
+
+
+```
+
+
+```{r}
+library(dplyr)
+
+samplesheet <- samplesheet %>%
+  mutate(class = case_when(
+    Sample.Type == "Metastatic" ~ "MT",
+    Sample.Type == "Primary Tumor" ~ "nonMT",
+    Sample.Type == "Solid Tissue Normal" ~ "N",
+    TRUE ~ NA_character_  # Handle other cases (optional)
+  ))
+
+samplesheet
+
+
+```
+
+
+```{r}
+library(dplyr)
+
+samplesheet <- samplesheet %>%
+  mutate(
+    sample_id = ifelse(is.na(class), NA, paste(Case.ID, class, sep = "-")) # Combine Case.ID and class
+  )
+
+samplesheet
+```
+
+```{r}
+samplesheet_cadangan1 <- samplesheet
+```
+
+```{r}
+samplesheet <- samplesheet %>%
+  mutate(file_name = sub("\\.tsv$", "", File.Name))
+
+head(samplesheet$file_name)
+
+```
+
+```{r}
+combined_df_copy <- combined_df
+```
+
+```{r}
+# Create a named vector for mapping
+name_map <- setNames(samplesheet$sample_id, samplesheet$file_name)
+
+# Rename matching columns
+colnames(combined_df) <- map_chr(colnames(combined_df), ~ ifelse(. %in% names(name_map), name_map[.], .))
+
+# View updated df2
+head(colnames(combined_df))
+
+
+
+```
+
+
+```{r}
+rnaseq_copy <- combined_df
+rnaseq <- rnaseq_copy[-(1:4), ]
+rnaseq
+```
+
+```{r}
+rnaseq
+```
+
+
+
+
+
+
+
+
+
+
+
+

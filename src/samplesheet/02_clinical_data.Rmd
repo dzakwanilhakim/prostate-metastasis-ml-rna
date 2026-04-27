@@ -1,0 +1,168 @@
+---
+title: "clinical"
+output: html_document
+date: "2025-06-08"
+---
+
+```{r}
+source("utils_basic_function.r")
+source("utils.R")
+```
+
+# 1. READ TSV
+```{r}
+clinical_tcga <- read.delim("clinical_tcga.tsv")
+clinical_cptac <- read.delim("clinical_cptac.tsv")
+```
+
+# 2. Set to NA
+```{r}
+clinical_tcga <- set2na(clinical_tcga)
+clinical_cptac <- set2na(clinical_cptac)
+```
+
+# 3. differences between 2 clinical
+
+```{r}
+col_tcga <- colnames(clinical_tcga)
+col_cptac <- colnames(clinical_cptac)
+```
+
+
+```{r}
+intersect(col_tcga, col_cptac)
+```
+
+```{r}
+setdiff(col_tcga, col_cptac)
+```
+
+```{r}
+setdiff(col_cptac, col_tcga)
+```
+
+# 3 RBIND
+
+```{r}
+clinical <- rbind(clinical_tcga, clinical_cptac)
+head(clinical)
+```
+
+# 4. Filter based on data
+
+```{r}
+load("QCPassed_FinalSet.rda")
+```
+
+
+```{r}
+pd <- QCPassed_PD
+```
+
+```{r}
+case_id <- unique(pd$Case.ID)
+any(duplicated(case_id))
+```
+
+```{r}
+clinical_filter_pd <- clinical[clinical$cases.submitter_id %in% case_id,]
+dim(clinical)
+dim(clinical_filter_pd)
+```
+
+# 5. Unique based on cases.submitter_id
+```{r}
+clinical_filter_unique <- clinical_filter_pd %>% distinct(cases.submitter_id, .keep_all = TRUE)
+dim(clinical_filter_unique)
+```
+
+# 6. Add exposure
+```{r}
+exposure_tcga <- read.delim("exposure_tcga.tsv")
+exposure_cptac <- read.delim("exposure_cptac.tsv")
+cols_exp_tcga <- colnames(exposure_tcga)
+cols_exp_cptac <- colnames(exposure_cptac)
+intersect(cols_exp_tcga, cols_exp_cptac)
+setdiff(cols_exp_tcga, cols_exp_cptac)
+setdiff(cols_exp_cptac, cols_exp_tcga)
+```
+
+```{r}
+exposure <- rbind(exposure_cptac, exposure_tcga)
+exposure <- set2na(exposure)
+exposure <- exposure[exposure$cases.submitter_id %in% case_id, ]
+dim(exposure)
+```
+```{r}
+exposure <- exposure %>% distinct(cases.submitter_id, .keep_all = TRUE)
+dim(exposure)
+```
+```{r}
+setdiff(case_id, exposure$cases.submitter_id)
+setdiff(exposure$cases.submitter_id, case_id)
+```
+
+# 7. cbind to clinical all
+```{r}
+intersect(cols_exp_cptac, col_cptac)
+```
+```{r}
+exposure <- exposure %>% select(-cases.case_id, -project.project_id)
+```
+
+```{r}
+clinical_exposure <- cbind_by_id(clinical_filter_unique, exposure, id_col = "cases.submitter_id" )
+dim(clinical_exposure)
+dim(clinical_filter_unique)
+```
+
+```{r}
+setdiff(clinical_exposure$cases.submitter_id, case_id)
+```
+
+
+```{r}
+setdiff(case_id, clinical_exposure$cases.submitter_id)
+```
+
+```{r}
+any(duplicated(clinical_exposure$cases.submitter_id))
+```
+```{r}
+all(clinical_exposure$cases.submitter_id %in% case_id)
+all(case_id %in% clinical_exposure$cases.submitter_id)
+```
+# 8. drop NA in tumor grade
+
+```{r}
+clinical_grade_tcga <- clinical_exposure[!is.na(clinical_exposure$diagnoses.tumor_grade),]
+value_count(clinical_grade_tcga, "diagnoses.tumor_grade")
+value_count(clinical_exposure, "diagnoses.tumor_grade")
+
+```
+
+```{r}
+dim(clinical_exposure)
+dim(clinical_grade_tcga)
+```
+
+
+
+# 8. drop MA
+```{r}
+clinical_grade_filterNA_tcga <- drop_cols_na(clinical_grade_tcga, NAcutoff = 0.2)
+dim(clinical_grade_filterNA_tcga)
+```
+```{r}
+(na_proportion_tcga <- sort(colMeans(is.na(clinical_grade_filterNA_tcga))*100))
+```
+
+
+
+# 4. Filter Case for HNSCC
+
+```{r}
+value_count(clinical, c("diagnoses.primary_diagnosis", "diagnoses.site_of_resection_or_biopsy"))
+```
+
+

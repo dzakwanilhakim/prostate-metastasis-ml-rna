@@ -1,0 +1,203 @@
+---
+title: "CLINICAL_READY"
+output: html_document
+date: "2025-06-09"
+---
+```{r}
+source("utils_basic_function.r")
+source("utils.R")
+```
+
+```{r}
+load("samplesheet_hnsc.rda")
+load("QCPassed_FinalSet.rda")
+```
+
+```{r}
+clinical <- read.csv("clinical_merge_clean.csv")
+```
+
+# filter metadata
+```{r}
+metadata <- metadata[!is.na(metadata$case_submitter_id),]
+annotation_json <- metadata %>% select(case_submitter_id,notes,category)
+rownames(annotation_json) <- NULL
+annotation_json
+
+```
+
+```{r}
+annotatiaon_json <- annotation_json %>% rename(Case.ID = case_submitter_id,
+                                               Notes = notes,
+                                               Category = category)
+```
+
+
+
+# annotation from tcga
+```{r}
+annotation_comp <- read.delim("annotation_comprehensive.tsv")
+annotation_comp
+```
+
+
+# annotation merge
+
+```{r}
+annotation_merge <- rbind(annotation_comp, annotatiaon_json)
+annotation_merge <- annotation_merge %>% distinct(Case.ID, .keep_all = TRUE)
+dim(annotation_merge)
+```
+
+```{r}
+masked_patient_id <- intersect(annotation_merge$Case.ID, clinical$Patient.ID)
+exclude_case <- annotation_merge[annotation_merge$Case.ID %in% masked_patient_id,]
+exclude_case <- exclude_case %>% distinct(Case.ID, .keep_all = TRUE)
+exclude_case
+```
+
+```{r}
+write.csv(exclude_case, "exclude_case.csv")
+```
+
+
+# masking
+```{r}
+clinical$mask <- "No"
+clinical$mask[clinical$Patient.ID %in% annotation_merge$Case.ID] <- "Yes"
+table(clinical$mask)
+
+```
+```{r}
+clinical_pass <- subset(clinical, mask == "No")
+clinical_pass
+```
+
+```{r}
+value_count(clinical_pass, c("Smoking.Status","Sex","Sample.Type","Race.Category","Patient.Primary.Tumor.Site", "Tumor.Grade", "Cancer.Type.Detailed", "Alcohol.History.Documented"))
+```
+
+
+```{r}
+# Make a copy
+clinical_pass$simplified_smoking <- as.character(clinical_pass$Smoking.Status)
+
+# Simplify smoking status
+clinical_pass$simplified_smoking <- dplyr::case_when(
+  clinical_pass$simplified_smoking %in% c(
+    "Current Reformed Smoker for < or = 15 yrs",
+    "Current Reformed Smoker for > 15 yrs",
+    "Current Reformed Smoker, Duration Not Specified",
+    "Current Reformed Smoker,Duration Not Specified"
+  ) ~ "Former Smoker",
+  
+  clinical_pass$simplified_smoking == "Current Smoker" ~ "Current Smoker",
+  clinical_pass$simplified_smoking == "Lifelong Non-Smoker" ~ "Never Smoked",
+  clinical_pass$simplified_smoking == "Smoking history not documented" | 
+    is.na(clinical_pass$simplified_smoking) ~ "Unknown",
+  
+  TRUE ~ "Unknown"
+)
+
+# View summary
+table(clinical_pass$simplified_smoking)
+
+```
+
+```{r}
+clinical_pass <- clinical_pass %>% select(-Smoking.Status)
+clinical_pass <- clinical_pass %>% rename(Smoking.Status = simplified_smoking)
+```
+
+# filter samplesheet
+```{r}
+pd <- QCPassed_PD
+rownames(pd) <- NULL
+```
+
+```{r}
+all(clinical_pass$Patient.ID %in% pd$Case.ID)
+```
+
+```{r}
+pd <- pd[pd$Case.ID %in% clinical_pass$Patient.ID,]
+```
+
+
+```{r}
+cols <- c("Sample_Name", "Key.Sample", "Data.Category", "Project", "Case.ID", "Sample_Group", "Preservation.Method", "platform")
+pd <- pd %>% select(cols)
+pd
+```
+
+```{r}
+pd$Preservation.Method <- "OCT or Snap Frozen"
+pd
+```
+
+
+
+```{r}
+clinical_pass_cbind <- clinical_pass %>% select(-Study.ID, -mask)
+clinical_pass_cbind <- clinical_pass_cbind %>% rename(Case.ID=Patient.ID )
+clinical_pass_cbind
+```
+
+
+```{r}
+pd_cancer <- subset(pd, Sample_Group == "Tumor")
+pd_normal <- subset(pd, Sample_Group == "Normal")
+dim(pd_cancer)
+dim(pd_normal)
+```
+
+```{r}
+samplesheet_cancer <- cbind_by_id(pd_cancer, clinical_pass_cbind, id_col = "Case.ID")
+samplesheet_normal <- cbind_by_id(pd_normal, clinical_pass_cbind, id_col = "Case.ID")
+```
+
+
+```{r}
+samplesheet_cancer <- set2na(samplesheet_cancer)
+samplesheet_cancer
+```
+
+
+
+
+```{r}
+samplesheet_normal$Cancer.Type.Detailed <- "Normal"
+samplesheet_normal$Tumor.Grade <- "Normal"
+samplesheet_normal <- set2na(samplesheet_normal)
+samplesheet_normal
+```
+
+
+```{r}
+library(dplyr)
+samplesheet_cancer$Tumor.Grade <- recode(samplesheet_cancer$Tumor.Grade, G4 = "G3")
+```
+
+
+```{r}
+value_count(samplesheet_cancer, c("Smoking.Status","Sex","Sample.Type","Race.Category","Patient.Primary.Tumor.Site", "Tumor.Grade", "Cancer.Type.Detailed", "Alcohol.History.Documented"))
+```
+
+```{r}
+samplesheet <- rbind(samplesheet_normal, samplesheet_cancer)
+```
+
+
+```{r}
+write.csv(samplesheet_cancer, "samplesheet_cancer_final.csv")
+write.csv(samplesheet_normal, "samplesheet_normal_final.csv")
+write.csv(samplesheet, "samplesheet_final.csv")
+```
+
+
+```{r}
+save(samplesheet, samplesheet_cancer, samplesheet_normal, file = "samplesheet_final.rda")
+```
+
+
+

@@ -1,0 +1,267 @@
+---
+title: "CLINICAL_BIOPORTAL"
+output: html_document
+date: "2025-06-09"
+---
+
+
+
+```{r}
+source("utils_basic_function.r")
+source("utils.R")
+```
+
+# 1. READ TSV
+```{r}
+clinical_tcga_cbio <- read.delim("hnsc_tcga_clinical_data.tsv")
+clinical_cptac_cbio <- read.delim("ohnca_cptac_gdc_clinical_data.tsv")
+```
+
+# 2. Set to NA
+```{r}
+clinical_tcga_cbio <- set2na(clinical_tcga_cbio)
+clinical_cptac_cbio <- set2na(clinical_cptac_cbio)
+```
+
+# 3. differences between 2 clinical
+
+
+```{r}
+clinical_tcga_cbio <- clinical_tcga_cbio %>% rename(Tumor.Grade=Neoplasm.Histologic.Grade)
+clinical_tcga_cbio <- clinical_tcga_cbio %>% rename(Smoking.Status=Patient.Smoking.History.Category)
+```
+
+
+```{r}
+col_tcga_cbio <- colnames(clinical_tcga_cbio)
+col_cptac_cbio <- colnames(clinical_cptac_cbio)
+```
+
+
+```{r}
+(intersect_cols <- intersect(col_tcga_cbio, col_cptac_cbio))
+```
+
+# 3 RBIND
+
+```{r}
+clinical_tcga_intersect_cbio <- clinical_tcga_cbio %>% select(intersect_cols)
+clinical_cptac_intersect_cbio <- clinical_cptac_cbio %>% select(intersect_cols)
+clinical_cbio <- rbind(clinical_tcga_intersect_cbio, clinical_cptac_intersect_cbio)
+head(clinical_cbio)
+```
+
+# 4. Filter based on data
+
+```{r}
+load("QCPassed_FinalSet.rda")
+```
+
+
+```{r}
+pd <- QCPassed_PD
+```
+
+```{r}
+case_id <- unique(pd$Case.ID)
+any(duplicated(case_id))
+```
+
+```{r}
+clinical_filter_pd_cbio <- clinical_cbio[clinical_cbio$Patient.ID %in% case_id,]
+dim(clinical_cbio)
+dim(clinical_filter_pd_cbio)
+```
+
+# 5. Unique based on cases.submitter_id
+
+```{r}
+table(clinical_filter_pd_cbio$Sample.Type, useNA = 'ifany')
+```
+
+```{r}
+clinical_filter_pd_cbio <- clinical_filter_pd_cbio[clinical_filter_pd_cbio$Sample.Type != "Metastasis",]
+table(clinical_filter_pd_cbio$Sample.Type, useNA = 'ifany')
+```
+
+
+
+```{r}
+clinical_filter_unique_cbio <- clinical_filter_pd_cbio %>% distinct(Patient.ID, .keep_all = TRUE)
+dim(clinical_filter_unique_cbio)
+```
+
+# 6. Add exposure
+```{r}
+exposure_tcga <- read.delim("exposure_tcga.tsv")
+exposure_cptac <- read.delim("exposure_cptac.tsv")
+cols_exp_tcga <- colnames(exposure_tcga)
+cols_exp_cptac <- colnames(exposure_cptac)
+intersect(cols_exp_tcga, cols_exp_cptac)
+setdiff(cols_exp_tcga, cols_exp_cptac)
+setdiff(cols_exp_cptac, cols_exp_tcga)
+```
+
+```{r}
+exposure <- rbind(exposure_cptac, exposure_tcga)
+exposure <- set2na(exposure)
+exposure <- exposure[exposure$cases.submitter_id %in% case_id, ]
+dim(exposure)
+```
+```{r}
+exposure <- exposure %>% distinct(cases.submitter_id, .keep_all = TRUE)
+dim(exposure)
+```
+```{r}
+setdiff(case_id, exposure$cases.submitter_id)
+setdiff(exposure$cases.submitter_id, case_id)
+```
+
+# 7. cbind to clinical all
+```{r}
+intersect(cols_exp_cptac, col_cptac)
+```
+```{r}
+exposure <- exposure %>% select(-cases.case_id, -project.project_id)
+```
+
+```{r}
+exposure_cbio <- exposure %>% rename(Patient.ID = cases.submitter_id)
+```
+
+
+```{r}
+clinical_exposure_cbio <- cbind_by_id(clinical_filter_unique_cbio, exposure_cbio, id_col = "Patient.ID" )
+dim(clinical_exposure_cbio)
+dim(clinical_filter_unique_cbio)
+```
+
+```{r}
+setdiff(clinical_exposure$cases.submitter_id, case_id)
+```
+
+
+```{r}
+setdiff(case_id, clinical_exposure$cases.submitter_id)
+```
+
+```{r}
+any(duplicated(clinical_exposure$cases.submitter_id))
+```
+```{r}
+all(clinical_exposure$cases.submitter_id %in% case_id)
+all(case_id %in% clinical_exposure$cases.submitter_id)
+```
+
+# 8. drop if tumor_grade = na
+
+```{r}
+clinical_grade_cbio <- clinical_exposure_cbio[!is.na(clinical_exposure_cbio$Tumor.Grade),]
+value_count(clinical_grade_cbio, "Tumor.Grade")
+value_count(clinical_exposure_cbio, "Tumor.Grade")
+
+```
+
+
+
+# 9. drop MA
+
+```{r}
+clinical_grade_cbio <- set2na(clinical_grade_cbio)
+```
+
+
+```{r}
+clinical_grade_filterNA_cbio <- drop_cols_na(clinical_grade_cbio, NAcutoff = 0.2)
+dim(clinical_grade_filterNA_cbio)
+```
+
+```{r}
+(na_proportion_cbio <- sort(colMeans(is.na(clinical_grade_filterNA_cbio))*100))
+```
+
+
+
+# 10. compare wih tcga
+```{r}
+(setdiff_tcga_cbio <- setdiff(clinical_grade_filterNA_tcga$cases.submitter_id, clinical_grade_filterNA_cbio$Patient.ID))
+(setdiff_cbio_tcga <- setdiff(clinical_grade_filterNA_cbio$Patient.ID, clinical_grade_filterNA_tcga$cases.submitter_id))
+```
+
+# 13. RBIND from tcga to cbio
+```{r}
+clinical_tcga_rbind <- clinical_grade_filterNA_tcga[clinical_grade_filterNA_tcga$cases.submitter_id %in% setdiff_tcga_cbio,]
+head(clinical_tcga_rbind)
+dim(clinical_tcga_rbind)
+```
+
+```{r}
+colnames(clinical_tcga_rbind)
+```
+
+```{r}
+colnames(clinical_grade_filterNA_cbio)
+```
+
+```{r}
+#exposure_tcga$Patient.ID <- exposure_tcga$cases.submitter_id
+clinical_tcga_rbind <- cbind_function(clinical_tcga_rbind, exposure_tcga, key = "cases.submitter_id", target = c("exposures.tobacco_smoking_status",
+                                                                                                          "exposures.alcohol_history"))
+clinical_tcga_rbind <- set2na(clinical_tcga_rbind)
+```
+
+
+```{r}
+write.csv(clinical_tcga_rbind, "clinical_tcga_rbind_2.csv")
+```
+
+
+```{r}
+clinical_tcga_rbind2 <- read.csv("clinical_tcga_rbind.csv")
+
+```
+
+
+```{r}
+clinical_tcga_rbind2$patien
+```
+
+
+```{r}
+#exposure_tcga$Patient.ID <- exposure_tcga$cases.submitter_id
+clinical_tcga_rbind2 <- cbind_function(clinical_tcga_rbind2, exposure_tcga, key = "Patient.ID", target = c("exposures.tobacco_smoking_status",
+                                                                                                          "exposures.alcohol_history"))
+clinical_tcga_rbind2 <- set2na(clinical_tcga_rbind2)
+```
+
+```{r}
+clinical_tcga_rbind2 <- clinical_tcga_rbind2 %>% rename(Smoking.Status = exposures.tobacco_smoking_status,
+                                                        Alcohol.History.Documented = exposures.alcohol_history)
+```
+
+
+```{r}
+clinical_merge <- rbind_to_reference(clinical_grade_filterNA_cbio, clinical_tcga_rbind2)
+dim(clinical_grade_filterNA_cbio)
+dim(clinical_merge)
+```
+```{r}
+clinical_merge
+```
+
+
+
+
+
+```{r}
+save(clinical_merge, file =  "clinical_merge_raw.rda")
+```
+
+```{r}
+write.csv(clinical_merge, "clinical_merge_raw.csv")
+```
+
+
+
+
+

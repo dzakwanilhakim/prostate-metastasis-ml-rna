@@ -1,0 +1,276 @@
+---
+title: "pre_ML"
+output: html_document
+date: "2025-02-25"
+---
+PCA
+```{r}
+library(robustHD)
+rna_scaled <- robustScale(t(rna_matrix))  # Automatically applies robust scaling
+```
+
+
+```{r}
+pca_plotly <- function(rna_matrix, samplesheet) {
+  # Load required libraries
+  library(ggplot2)
+  library(plotly)
+  library(RColorBrewer)
+  
+  # Standard scaling
+  rna_scaled <- scale(t(rna_matrix))  # Transpose to make samples as rows
+  
+  # Perform PCA
+  pca_result <- prcomp(rna_scaled, center = TRUE, scale. = TRUE)
+  
+  # Compute percentage variance explained
+  var_explained <- (pca_result$sdev^2 / sum(pca_result$sdev^2)) * 100
+  pc1_var <- round(var_explained[1], 2)
+  pc2_var <- round(var_explained[2], 2)
+  
+  # Prepare data for visualization
+  pca_data <- as.data.frame(pca_result$x[, 1:2])  # Select first 2 PCs
+  pca_data$class <- samplesheet$class
+  pca_data$sample_id <- rownames(samplesheet)  # Add sample ID
+  
+  # Rename class labels
+  pca_data$class <- factor(pca_data$class, 
+                           levels = c("nonMT", "MT"), 
+                           labels = c("Non-metastasis", "Metastasis"))
+  
+  # Define colors for class
+  color_map <- c("Non-metastasis" = "yellow", 
+                 "Metastasis" = "red")
+
+  # Create plotly scatter plot with hover info
+  p <- plot_ly(
+    data = pca_data, 
+    x = ~PC1, 
+    y = ~PC2, 
+    type = 'scatter', 
+    mode = 'markers',
+    marker = list(
+      size = 6,  # Smaller dot size
+      line = list(color = 'black', width = 1)  # Black outline
+    ),
+    color = ~class,
+    colors = color_map,
+    text = ~paste("Sample:", sample_id, "<br>Class:", class),  # Hover text
+    hoverinfo = "text"
+  ) %>%
+    layout(
+      title = "PCA Plot of RNA-seq Data",
+      xaxis = list(title = paste0("PC1 (", pc1_var, "%)"), range = c(-15, 12)),  # Set X-axis range
+      yaxis = list(title = paste0("PC2 (", pc2_var, "%)"), range = c(-25, 5)),  # Set Y-axis range
+      legend = list(
+        title = list(text = "<b>Class</b>"),  # Bold title
+        orientation = "v",  # Vertical legend
+        x = 1, y = 1,  # Upper right corner
+        xanchor = "right",
+        yanchor = "top"
+      )
+    )
+  
+  return(p)
+}
+
+
+```
+
+
+```{r}
+(pca_vst <- pca_plotly(vst_df_MT, samplesheet2_2))
+```
+
+
+```{r}
+library(robustHD)
+#Load required libraries
+library(ggplot2)
+library(plotly)
+library(RColorBrewer)
+library(scales)
+
+library(robustbase)
+
+robust_scaler <- function(x) {
+  return ((x - median(x)) / Qn(x))  # Qn is a robust estimator of scale similar to IQR
+}
+
+#rna_scaled <- apply(t(rna_matrix), 2, robust_scaler)
+
+#rna_scaled <- apply(t(rna_matrix), 2, rescale)  # Automatically scales between 0 and 1
+#robust_scaler <- function(x) {
+#  return ((x - median(x)) / IQR(x))
+#}
+
+#rna_scaled <- apply(t(rna_matrix), 2, robust_scaler)  # Apply robust scaling to each column
+min_max_scaler <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+#rna_scaled <- apply(t(rna_matrix), 2, min_max_scaler)  # Scale each column
+
+
+```
+
+
+```{r}
+pca_plotly <- function(rna_matrix, samplesheet) {
+
+  
+  # Standard scaling
+  rna_scaled <- apply(t(rna_matrix), 2, min_max_scaler)
+ # Automatically applies robust scaling
+  
+  # Perform PCA
+  pca_result <- prcomp(rna_scaled, center = TRUE, scale. = TRUE)
+  
+  # Compute percentage variance explained
+  var_explained <- (pca_result$sdev^2 / sum(pca_result$sdev^2)) * 100
+  pc1_var <- round(var_explained[1], 2)
+  pc2_var <- round(var_explained[2], 2)
+  
+  # Prepare data for visualization
+  pca_data <- as.data.frame(pca_result$x[, 1:2])  # Select first 2 PCs
+  pca_data$class <- samplesheet$class
+  pca_data$sample_id <- rownames(samplesheet)  # Add sample ID
+  
+  # Rename class labels
+  pca_data$class <- factor(pca_data$class, 
+                           levels = c("nonMT", "MT"), 
+                           labels = c("Non-metastasis", "Metastasis"))
+  
+  # Define colors for class
+  color_map <- c("Non-metastasis" = "yellow", 
+                 "Metastasis" = "red")
+
+  # Create plotly scatter plot with hover info
+  p <- plot_ly(
+    data = pca_data, 
+    x = ~PC1, 
+    y = ~PC2, 
+    type = 'scatter', 
+    mode = 'markers',
+    marker = list(
+      size = 6,  # Smaller dot size
+      line = list(color = 'black', width = 1)  # Black outline
+    ),
+    color = ~class,
+    colors = color_map,
+    text = ~paste("Sample:", sample_id, "<br>Class:", class),  # Hover text
+    hoverinfo = "text"
+  ) %>%
+    layout(
+      title = "PCA Plot of RNA-seq Data",
+      xaxis = list(title = paste0("PC1 (", pc1_var, "%)"), range = c(-15, 12)),  # Set X-axis range
+      yaxis = list(title = paste0("PC2 (", pc2_var, "%)"), range = c(-25, 5)),  # Set Y-axis range
+      legend = list(
+        title = list(text = "<b>Class</b>"),  # Bold title
+        orientation = "v",  # Vertical legend
+        x = 1, y = 1,  # Upper right corner
+        xanchor = "right",
+        yanchor = "top"
+      )
+    )
+  
+  return(p)
+}
+
+
+```
+
+
+```{r}
+(pca_vst <- pca_plotly(vst_df_MT, samplesheet2_2))
+```
+
+
+```{r}
+vst_df_MT_T <- as.data.frame(t(vst_df_MT))
+vst_df_MT_T
+
+```
+
+
+```{r}
+identical(rownames(vst_df_MT_T),rownames(samplesheet2_2))
+
+```
+
+```{r}
+samplesheet2_2$class <- factor(samplesheet2_2$class, 
+                           levels = c("nonMT", "MT"), 
+                           labels = c("Non-metastasis", "Metastasis"))
+samplesheet2_2
+
+```
+
+```{r}
+
+samplesheet2$class <- factor(samplesheet2, 
+                           levels = c("nonMT", "MT", "N"), 
+                           labels = c("Non-metastasis", "Metastasis", "Normal Adjacent Tissue"))
+samplesheet2
+
+```
+
+
+Kolmogorov-Smirnov
+```{r}
+
+# Load necessary library
+library(dplyr)
+
+# Example RNA-seq matrix and samplesheet
+# Assume rnaseq_matrix is a data frame where rows are samples and columns are genes
+# Assume samplesheet is a data frame with a column "class" indicating "Metastasis" or "Non-metastasis"
+
+# Function to perform KS test against normal distribution
+ks_normal_test <- function(x) {
+  # Perform KS test against normal distribution
+  pval <- ks.test(x, "pnorm", mean(x, na.rm = TRUE), sd(x, na.rm = TRUE))$p.value
+  return(pval >= 0.05) # TRUE if normal, FALSE otherwise
+}
+
+# Split data based on class
+metastasis_samples <- samplesheet2_2$class == "Metastasis"
+non_metastasis_samples <- samplesheet2_2$class == "Non-metastasis"
+
+# Apply KS test for each gene in both groups
+results <- apply(vst_df_MT_T, 2, function(gene_expr) {
+  metastasis_pval <- ks_normal_test(gene_expr[metastasis_samples])
+  non_metastasis_pval <- ks_normal_test(gene_expr[non_metastasis_samples])
+  
+  # Define the "Both" column
+  both <- metastasis_pval & non_metastasis_pval
+  
+  return(c(Metastasis = metastasis_pval, Non_metastasis = non_metastasis_pval, Both = both))
+})
+
+# Convert results to a data frame
+results_df <- as.data.frame(t(results))
+results_df <- results_df %>% mutate(Gene = colnames(vst_df_MT_T)) %>% select(Gene, everything())
+
+# Print results
+print(results_df)
+
+
+```
+
+
+```{r}
+write.table(vst_df_MT_T, file = "596_RNAmatrix.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+```{r}
+samplesheet2_2_export <- samplesheet2_2 %>% select(-Project.ID)
+samplesheet2_2_export$Sample_ID <- rownames(samplesheet2_2_export)
+samplesheet2_2_export <- samplesheet2_2_export %>% select(Sample_ID, class)
+samplesheet2_2_export
+
+write.table(samplesheet2_2_export, file = "samplesheet.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+

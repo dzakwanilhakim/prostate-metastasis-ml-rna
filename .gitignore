@@ -1,0 +1,26 @@
+# R
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+**/.Rhistory
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+.env
+.venv/
+
+# Large data files — store via GDC or DVC instead
+data/raw/*.txt
+data/raw/*.csv
+data/raw/*.tsv
+
+# Trained model binaries — large, reproducible from notebooks
+results/models/*.pkl
+
+# OS
+.DS_Store
+Thumbs.db

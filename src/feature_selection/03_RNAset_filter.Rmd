@@ -1,0 +1,497 @@
+---
+title: "standardize_rnaseq"
+output: html_document
+date: "2024-12-16"
+---
+```{r}
+library(dplyr)
+library(tidyr)
+library(biomaRt)
+# table function
+vc <- function(col){
+  print(table(col, useNA = 'ifany'))
+}
+```
+
+# 1. preprocessing samplesheet RNA
+
+```{r}
+sampsheet_rna <- read.delim("D:/TA_S2_Head_and_Neck/RProject/qc2/sampsheet_rna.tsv")
+sampsheet_rna$Case.ID <- sub(",.*", "", sampsheet_rna$Case.ID)
+sampsheet_rna$Sample.Type<- sub(",.*", "", sampsheet_rna$Sample.Type)
+sampsheet_rna$Sample.ID<- sub(",.*", "", sampsheet_rna$Sample.ID)
+
+```
+
+```{r}
+library(dplyr)
+
+# Filter sampsheet_rna to keep only rows where Case.ID is in pd_450_EPIC_champ$Case.ID
+sampsheet_rna <- sampsheet_rna %>%
+  filter(Case.ID %in% pd_450_EPIC_champ$Case.ID)
+
+# View the filtered result
+head(sampsheet_rna)
+
+```
+
+```{r}
+pd <- pd_450_EPIC_champ
+pd <- pd %>%
+  filter(Case.ID %in% sampsheet_rna$Case.ID)
+
+all(pd$Case.ID %in% sampsheet_rna$Case.ID)
+all(sampsheet_rna$Case.ID %in% pd$Case.ID)
+
+pd_rna <- pd
+rm(pd)
+```
+
+```{r}
+library(dplyr)
+
+# Assuming sampsheet_rna and pd_rna are your data frames
+result <- sampsheet_rna %>%
+  inner_join(pd_rna, by = c("Case.ID" = "Case.ID", "Sample.Type" = "Sample.Type"))
+
+# View the result
+print(result)
+sampsheet_rna_meth <- result
+sampsheet_rna_meth
+```
+
+
+```{r}
+sampsheet_rna_meth$File.Name.x <- sub("\\.tsv$", "", sampsheet_rna_meth$File.Name.x)
+rownames(rna_seq) <- rna_seq$gene_id
+rna_seq$gene_id <- NULL 
+# View the updated column
+head(sampsheet_rna_meth$File.Name.x)
+
+cat('duplicate?', any(duplicated(sampsheet_rna_meth$Sample_Name)))
+all(colnames(rna_seq) %in% sampsheet_rna_meth$File.Name.x)
+all(sampsheet_rna_meth$File.Name.x %in% colnames(rna_seq))
+```
+
+```{r}
+sampsheet_rna_meth <- sampsheet_rna_meth %>% distinct(Sample_Name, .keep_all = TRUE)
+dim(sampsheet_rna_meth)
+dim(rna_seq)
+
+```
+
+```{r}
+
+rna_seq_filtered <- rna_seq[, colnames(rna_seq) %in% sampsheet_rna_meth$File.Name.x]
+dim(rna_seq_filtered)
+dim(sampsheet_rna_meth)
+
+```
+
+```{r}
+# Replace column names in df1 based on the mapping in df2
+colnames(rna_seq_filtered) <- sampsheet_rna_meth$Sample_Name[match(colnames(rna_seq_filtered), sampsheet_rna_meth$File.Name.x)]
+head(colnames(rna_seq_filtered))
+all(colnames(rna_seq_filtered) %in% sampsheet_rna_meth$Sample_Name)
+all(sampsheet_rna_meth$Sample_Name %in% colnames(rna_seq_filtered))
+
+```
+
+
+
+```{r}
+rna_seq_filtered2 <- rna_seq_filtered[-(1:4), ]
+rna_seq_filtered2 <- rna_seq_filtered2[rowMeans(rna_seq_filtered2 == 0) < 0.5, ]
+dim(rna_seq_filtered2)
+
+```
+
+#biomart
+
+```{r}
+
+rna_seq_filtered3 <- rna_seq_filtered2
+rownames(rna_seq_filtered3) <- sub("\\..*", "", rownames(rna_seq_filtered3))  
+head(rownames(rna_seq_filtered3))
+rna_seq_filtered3$CpG.ID <- rownames(rna_seq_filtered3)
+rna_seq_filtered3 <- rna_seq_filtered3 %>% distinct(CpG.ID, .keep_all = TRUE)
+rna_seq_filtered3$CpG.ID <- NULL
+dim(rna_seq_filtered3)
+
+
+```
+
+```{r}
+any(duplicated(rownames(rna_seq_filtered3)))
+```
+
+
+
+```{r}
+library(biomaRt)
+
+# Connect to Ensembl BioMart (ensure to use the latest Ensembl version if necessary)
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")  # Adjust dataset for other species
+
+# Retrieve gene name, type, and Entrez ID
+gene_data_rna <- getBM(
+  attributes = c("ensembl_gene_id", "external_gene_name", "gene_biotype"),
+  filters = "ensembl_gene_id",
+  values = rownames(rna_seq_filtered3),  # Ensure unique Ensembl gene IDs to avoid redundancy
+  mart = mart
+)
+
+# View the resulting data frame
+head(gene_data_rna)
+dim(gene_data_rna)
+```
+
+```{r}
+any(duplicated(rownames(rna_seq_filtered3)))
+any(duplicated(gene_data_rna$ensembl_gene_id))
+any(duplicated(gene_data_rna$external_gene_name))
+
+```
+```{r}
+# Check for duplicate gene IDs and display them
+duplicated_genes <- gene_data_rna$external_gene_name[duplicated(gene_data_rna$external_gene_name)]
+(unique_duplicated_genes <- unique(duplicated_genes))
+```
+
+replace with NA
+
+```{r}
+# Replace empty cells with NA
+gene_data_rna[gene_data_rna == ""] <- NA
+
+
+# Remove rows with NA in a specific column
+gene_data_rna <- gene_data_rna[!is.na(gene_data_rna$external_gene_name), ]
+
+any(is.na(gene_data_rna))
+any(is.na(rna_seq_filtered3))
+```
+
+distinct external gene name
+```{r}
+gene_data_rna <- gene_data_rna %>% distinct(external_gene_name, .keep_all = TRUE)
+```
+
+
+```{r}
+rna_seq_filtered4 <- rna_seq_filtered3
+rna_seq_filtered4 <- rna_seq_filtered4[rownames(rna_seq_filtered4) %in% gene_data_rna$ensembl_gene_id,]
+
+dim(rna_seq_filtered4)
+dim(gene_data_rna)
+
+```
+
+```{r}
+any(is.na(rna_seq_filtered4))
+
+```
+
+```{r}
+
+rna_seq_filtered5 <- rna_seq_filtered4[!apply(rna_seq_filtered4, 1, 
+                                              function(x) all(x >= 0 & x <= 10)), ]
+dim(rna_seq_filtered5)
+dim(rna_seq_filtered4)
+```
+```{r}
+rna_seq_filtered4[rna_seq_filtered4 <= 10] <- NA
+
+```
+
+
+```{r}
+# Step 1: Calculate NA percentage for each patient
+na_percentage <- apply(rna_seq_filtered4, 2, function(x) sum(is.na(x)) / length(x) * 100)
+na_counts <- apply(rna_seq_filtered4, 2, function(x) sum(is.na(x)))
+dim(rna_seq_filtered4)
+
+```
+
+```{r}
+# Step 2: Create a histogram
+hist(na_counts, 
+     main = "Distribution of NA Percentage Across Patients", 
+     xlab = "Percentage of NA values", 
+     col = "lightblue", 
+     border = "black", 
+     breaks = 100)
+
+# Step 3: Add a density curve with adjusted bandwidth
+density_na <- density(na_counts, bw = 5)  # Adjust bw for smoother/less smooth curve
+lines(density_na, col = "red", lwd = 2)
+
+```
+
+
+```{r}
+# Step 2: Create a histogram
+hist(na_percentage, 
+     main = "Distribution of NA Percentage Across Patients", 
+     xlab = "Percentage of NA values", 
+     col = "lightblue", 
+     border = "black", 
+     breaks = 100)
+
+# Step 3: Add a density curve with adjusted bandwidth
+density_na <- density(na_percentage, bw = 5)  # Adjust bw for smoother/less smooth curve
+lines(density_na, col = "red", lwd = 2)
+```
+
+
+```{r}
+# Step 2: Filter out patients (columns) with NA percentage > 30%
+rna_seq_filtered_sample <- rna_seq_filtered4[, na_percentage <= 30]
+
+# Check the result
+dim(rna_seq_filtered_sample)
+```
+
+
+```{r}
+rna_seq_filtered6 <- rna_seq_filtered_sample
+rna_seq_filtered6 <- rna_seq_filtered6[rowMeans(is.na(rna_seq_filtered6)) < 0.05, ]
+dim(rna_seq_filtered6)
+
+```
+
+```{r}
+library(impute)
+# Step 3: Apply KNN imputation (k = 5) for each gene (rows represent genes, columns represent patients)
+rna_seq_imputed <- impute.knn(as.matrix(rna_seq_filtered6))
+
+# Check the imputed data
+head(rna_seq_imputed)
+dim(rna_seq_imputed)
+```
+
+```{r}
+rna_imputed_data <- as.data.frame(rna_seq_imputed$data)
+rna_imputed_data
+
+```
+
+```{r}
+any(is.na(rna_imputed_data))
+```
+
+```{r}
+gene_data_rna_filtered <- gene_data_rna %>%
+  filter(ensembl_gene_id %in% rownames(rna_imputed_data))
+dim(gene_data_rna_filtered)
+dim(rna_imputed_data)
+```
+
+```{r}
+# Filter rows in df where rownames are in colnames of df2
+sampsheet_rna_meth_ordered_filtered <- sampsheet_rna_meth_ordered[rownames(sampsheet_rna_meth_ordered) %in% colnames(rna_imputed_data), ]
+dim(rna_imputed_data)
+dim(sampsheet_rna_meth_ordered_filtered)
+
+```
+
+```{r}
+save(gene_data_rna_filtered, 
+     rna_imputed_data, 
+     sampsheet_rna_meth_ordered_filtered, 
+     file = "RNA_set.RData")
+
+```
+
+==================================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+all(rownames(rna_seq_filtered3) %in% gene_data_rna$ensembl_gene_id)
+all(gene_data_rna$ensembl_gene_id %in% rownames(rna_seq_filtered3))
+```
+
+
+```
+
+```{r}
+vc(gene_data$gene_biotype)
+
+
+
+
+
+
+
+
+
+```{r}
+any(duplicated(rownames(rna_seq_filtered3)))
+```
+
+
+
+```{r}
+library(dplyr)
+
+# Update sampsheet_rna$Sample_Name based on the conditions
+sampsheet_rna <- sampsheet_rna %>%
+  mutate(Sample_Name = if_else(
+    Case.ID == pd_450_EPIC_champ$Case.ID & Sample.Type == pd_450_EPIC_champ$Sample.Type, 
+    pd_450_EPIC_champ$Sample_Name, 
+    NA_character_
+  ))
+
+
+```
+
+
+
+
+# dir
+
+```{r}
+dir <- getwd()
+resultdir <- file.path(dir, 'result')
+imagedir <- 'RNAseq.RData'
+rnadir <- file.path(dir, 'RNA-tsv')
+load('beta_combat.RData')
+```
+
+
+# move data
+
+```{r}
+# Check all files being listed
+all_files <- list.files(path = rnadir, recursive = TRUE, full.names = TRUE)
+
+# Print all files to verify
+head(all_files)
+
+# List all .pdf files recursively in current directory and subdirectories
+tsv_files <- list.files(path = rnadir, pattern = "\\.tsv$", recursive = TRUE, full.names = TRUE)
+
+# Move each .pdf file to the current directory
+for (file in tsv_files) {
+  file.rename(file, file.path(rnadir, basename(file)))
+}
+
+```
+
+# data inspection
+
+build expression matrix from stranded count
+
+```{r}
+# Load necessary library
+library(dplyr)
+library(readr)
+
+# Initialize an empty dataframe
+df <- data.frame()
+
+# Initialize index counter
+idx <- 0
+
+# Loop through each file in files
+for (file in files) {
+  idx <- idx + 1
+  
+  # Read the TSV file
+  rna <- read.delim(file, comment.char="#")
+  
+  # Select gene_id and stranded_first
+  rna_selected <- rna %>%
+    select(gene_id, stranded_first)
+  
+  # Rename the stranded_first column with the file's basename
+  colname <- tools::file_path_sans_ext(basename(file))
+  colnames(rna_selected)[2] <- colname
+  
+  # Merge with the main dataframe (df)
+  if (nrow(df) == 0) {
+    # If df is empty, initialize it with the current file's data
+    df <- rna_selected
+  } else {
+    # Merge based on gene_id
+    df <- full_join(df, rna_selected, by = "gene_id")
+  }
+  
+  # Print progress
+  print(paste("Data read:", idx, ",", colname))
+}
+
+# The resulting dataframe `df` now contains all merged data
+
+
+```
+
+
+
+```{r}
+head(df)
+
+```
+
+```{r}
+rna_seq <- df
+```
+
+```{r}
+colnames(rna_seq) <- sub("\\..*", "", colnames(rna_seq))
+head(rna_seq)
+
+```
+
+```{r}
+rna_seq <- rna_seq[-c(1:4), ]
+head(rna_seq)
+```
+
+```{r}
+length(intersect(colnames(rna_seq), pd_450_EPIC_champ$Slide))
+```
+
+
+```{r}
+save(pd_450_EPIC_champ, rna_seq, file = "RNAseq.RData")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
